@@ -182,38 +182,60 @@ export async function transcribePcmS16le(
   const errors: string[] = [];
 
   const done = new Promise<string>((resolve, reject) => {
+    let finished = false;
+    const finish = (fn: () => void) => {
+      if (finished) return;
+      finished = true;
+      fn();
+    };
+
     const timer = setTimeout(() => {
-      settled = true;
-      ws.close();
-      reject(new Error("ASR 识别超时"));
+      finish(() => {
+        settled = true;
+        try {
+          ws.close();
+        } catch {
+          /* ignore */
+        }
+        reject(new Error("ASR 识别超时"));
+      });
     }, timeoutMs);
 
     ws.on("message", (data) => {
       const buf = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
       const { json, error } = parseServerBinary(buf);
-      if ( error) errors.push(error);
+      if (error) errors.push(error);
       const t = getResultText(json);
       if (t) lastText = t;
       const flag = buf.length >= 2 ? buf[1] & 0x0f : 0;
       if (flag === 0x3) {
         clearTimeout(timer);
-        settled = true;
-        ws.close();
-        resolve(lastText);
+        finish(() => {
+          settled = true;
+          try {
+            ws.close();
+          } catch {
+            /* ignore */
+          }
+          resolve(lastText);
+        });
       }
     });
 
     ws.on("close", () => {
-      if (!settled) {
-        clearTimeout(timer);
-        if (lastText) resolve(lastText);
-        else reject(new Error(errors.join("；") || "连接已关闭且无识别结果"));
-      }
+      clearTimeout(timer);
+      finish(() => {
+        if (!settled) {
+          settled = true;
+          if (lastText) resolve(lastText);
+          else reject(new Error(errors.join("；") || "连接已关闭且无识别结果"));
+        }
+      });
     });
 
     ws.on("error", (e) => {
       clearTimeout(timer);
-      reject(e);
+      finish(() => reject(e));
     });
   });
 

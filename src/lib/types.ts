@@ -1,9 +1,17 @@
 export type InterviewMode = "assist" | "realistic";
 
+export type OutlineCategoryKind =
+  | "basics"
+  | "live_coding"
+  | "system_design"
+  | "project"
+  | "pressure"
+  | string;
+
 export type OutlineCategory = {
   id: string;
   title: string;
-  kind: "basics" | "coding" | "project" | "pressure" | string;
+  kind: OutlineCategoryKind;
   questions: string[];
 };
 
