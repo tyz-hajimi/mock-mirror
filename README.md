@@ -1,36 +1,64 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 面镜 MockMirror
 
-## Getting Started
+基于简历与岗位 **JD** 的大厂风格 **模拟面试**：生成大纲 → **语音口述** → 追问与记录 → **报告与复盘**。口述内容落为文字，便于复盘与后续「问 AI」延续对话。
 
-First, run the development server:
+## 功能概览
+
+- **首页**：填写目标公司、JD、简历；选择拟真 / 辅助模式；生成大纲并开始面试。
+- **面试页**：语音作答（对接火山流式 ASR，可配置占位文案）；分段转写与追问流程。
+- **报告页**：结构化复盘与历史相关内容展示。
+- **仅问 AI**：需先有面试记录或从历史打开后继续对话。
+
+产品思路与评审说明见仓库内 [`productmemo.txt`](./productmemo.txt)。
+
+## 环境要求
+
+- **Node.js** 20+（与当前工程依赖一致即可）
+- **npm**（或兼容的包管理器）
+
+## 配置
+
+复制环境变量模板并填写密钥：
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+| 变量 | 说明 |
+|------|------|
+| `DEEPSEEK_API_KEY` | DeepSeek OpenAI 兼容接口，用于大纲、追问、总评、对话等 |
+| `VOLC_SPEECH_API_KEY` / `VOLC_SPEECH_RESOURCE_ID` | 火山引擎大模型流式语音识别（详见 `.env.example` 注释） |
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+未配置火山密钥时，可按 `.env.example` 使用 `MOCK_ASR_TEXT` 等占位行为（以实际代码为准）。
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 本地开发
 
-## Learn More
+```bash
+npm install
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+浏览器访问 <http://localhost:3000>。
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 生产构建与运行
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm run build
+npm run start
+```
 
-## Deploy on Vercel
+默认监听 **`0.0.0.0:3000`**，便于内网穿透或云主机公网访问（仍需安全组/防火墙放行对应端口）。
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 技术栈
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Next.js** 16（App Router）+ **React** 19 + **TypeScript**
+- **Tailwind CSS** 4
+- 服务端 API：`/api/outline`、`/api/transcribe`、`/api/followup`、`/api/score`、`/api/evaluate-block`、`/api/interview-chat` 等
+
+## 仓库
+
+<https://github.com/tyz-hajimi/mock-mirror>
+
+## 许可
+
+未包含开源许可证文件时，默认保留所有权利；如需开源请自行补充 `LICENSE`。
