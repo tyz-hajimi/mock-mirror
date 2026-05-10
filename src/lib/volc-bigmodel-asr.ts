@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import type { IncomingMessage } from "http";
 import zlib from "zlib";
 import WebSocket from "ws";
 
@@ -69,6 +70,38 @@ function collectWsHeaders(auth: AsrAuth) {
     throw new Error("需要配置 VOLC_SPEECH_API_KEY 或 VOLC_SPEECH_APP_KEY+VOLC_SPEECH_ACCESS_KEY");
   }
   return headers;
+}
+
+function readHttpMessageBody(res: IncomingMessage): Promise<string> {
+  return new Promise((resolve) => {
+    const chunks: Buffer[] = [];
+    res.on("data", (c: Buffer) => chunks.push(c));
+    res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    res.on("error", () => resolve(""));
+  });
+}
+
+/** 将 ws 握手非 101 的响应解析为可读错误（便于排查 403） */
+async function explainWsHandshakeFailure(
+  statusCode: number | undefined,
+  res: IncomingMessage,
+) {
+  const logId =
+    res.headers["x-tt-logid"] ??
+    res.headers["X-Tt-Logid"] ??
+    res.headers["X-Tt-LOGID"];
+  const body = (await readHttpMessageBody(res)).trim().slice(0, 400);
+  const base = `ASR 建连被拒绝（HTTP ${statusCode ?? "?"}）`;
+  const tail =
+    "常见原因：API Key 错误/过期、Resource ID 与购买的计费类型不一致（小时版 volc.bigasr.*.duration vs 并发版 *.concurrent）、未开通豆包流式语音识别或余额不足。";
+  return [
+    base,
+    logId ? `x-tt-logid: ${logId}` : null,
+    body ? `响应体: ${body}` : null,
+    tail,
+  ]
+    .filter(Boolean)
+    .join("。 ");
 }
 
 function parseServerBinary(buf: Buffer): {
@@ -167,19 +200,52 @@ export async function transcribePcmS16le(
 
   await new Promise<void>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error("ASR 建连超时")), 15_000);
-    ws.once("open", () => {
+    let settled = false;
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(t);
-      resolve();
+      fn();
+    };
+    ws.once("open", () => finish(resolve));
+    ws.once("unexpected-response", (_req, res) => {
+      void (async () => {
+        try {
+          const msg = await explainWsHandshakeFailure(res.statusCode, res);
+          finish(() => reject(new Error(msg)));
+        } catch {
+          finish(() =>
+            reject(
+              new Error(
+                `ASR 建连被拒绝（HTTP ${res.statusCode ?? "?"}），请检查密钥与 Resource ID`,
+              ),
+            ),
+          );
+        }
+      })();
     });
     ws.once("error", (e) => {
-      clearTimeout(t);
-      reject(e);
+      finish(() => {
+        const m = e instanceof Error ? e.message : String(e);
+        if (m.includes("403")) {
+          reject(
+            new Error(
+              `${m}。多为火山鉴权失败：请核对 VOLC_SPEECH_API_KEY（或 AppKey+AccessKey）、VOLC_SPEECH_RESOURCE_ID（duration/concurrent 与控制台一致），并确认服务已开通且有余额。`,
+            ),
+          );
+        } else reject(e);
+      });
     });
   });
 
   let lastText = "";
   let settled = false;
   const errors: string[] = [];
+
+  let releaseFirstServerFrame: (() => void) | null = null;
+  const firstServerFramePromise = new Promise<void>((resolve) => {
+    releaseFirstServerFrame = resolve;
+  });
 
   const done = new Promise<string>((resolve, reject) => {
     let finished = false;
@@ -202,6 +268,9 @@ export async function transcribePcmS16le(
     }, timeoutMs);
 
     ws.on("message", (data) => {
+      releaseFirstServerFrame?.();
+      releaseFirstServerFrame = null;
+
       const buf = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
       const { json, error } = parseServerBinary(buf);
       if (error) errors.push(error);
@@ -241,8 +310,20 @@ export async function transcribePcmS16le(
 
   ws.send(encodeFullClientRequest(payloadJson));
 
+  await Promise.race([
+    firstServerFramePromise,
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error("ASR 等待 full client 首包响应超时")),
+        15_000,
+      ),
+    ),
+  ]);
+
+  /** 服务端在 full client 后会递增序号；首帧音频须从 2 开始，否则会报 autoAssignedSequence mismatch */
+  let seq = 2;
+
   let offset = 0;
-  let seq = 1;
   while (offset < pcm.length) {
     const end = Math.min(offset + chunkBytes, pcm.length);
     const slice = pcm.subarray(offset, end);

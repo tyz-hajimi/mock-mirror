@@ -30,6 +30,19 @@ export type InterviewTurn = {
   softWarn?: boolean;
 };
 
+/** 某一题（主题目 ± 追问）在切至下一题间隙由模型生成的详评，供报告与复盘 */
+export type QuestionBlockEvaluation = {
+  questionIndex: number;
+  category: string;
+  kind: string;
+  mainQuestion: string;
+  followupQuestion: string | null;
+  /** 模型返回的 JSON（结构见 prompts） */
+  result: Record<string, unknown>;
+  error?: string;
+  createdAt: string;
+};
+
 export type InterviewLog = {
   resume: string;
   jd: string;
@@ -37,4 +50,6 @@ export type InterviewLog = {
   mode: InterviewMode;
   outline: InterviewOutline;
   turns: InterviewTurn[];
+  /** 逐题详评（在进入下一题时后台生成，可能因网络失败条目缺失） */
+  questionEvaluations?: QuestionBlockEvaluation[];
 };

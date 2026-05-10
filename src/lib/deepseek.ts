@@ -1,5 +1,16 @@
-import { FOLLOWUP_SYSTEM, OUTLINE_SYSTEM, SCORE_SYSTEM } from "./prompts";
-import type { InterviewMode, InterviewOutline, InterviewTurn } from "./types";
+import {
+  FOLLOWUP_SYSTEM,
+  INTERVIEW_CHAT_SYSTEM,
+  OUTLINE_SYSTEM,
+  QUESTION_BLOCK_EVAL_SYSTEM,
+  SCORE_SYSTEM,
+} from "./prompts";
+import type {
+  InterviewMode,
+  InterviewOutline,
+  InterviewTurn,
+  QuestionBlockEvaluation,
+} from "./types";
 
 const DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions";
 
@@ -85,4 +96,77 @@ export async function scoreInterview(input: {
     .join("\n");
   const user = `公司：${input.company}\n模式：${input.mode}\n\nJD摘要：\n${input.jd.slice(0, 4000)}\n\n简历摘要：\n${input.resume.slice(0, 4000)}\n\n面试记录：\n${transcript}`;
   return chatJson(SCORE_SYSTEM, user);
+}
+
+export async function evaluateQuestionBlock(input: {
+  resume: string;
+  jd: string;
+  company: string;
+  mode: InterviewMode;
+  questionIndex: number;
+  category: string;
+  kind: string;
+  mainQuestion: string;
+  mainAnswer: string;
+  followupQuestion: string | null;
+  followupAnswer: string | null;
+}) {
+  const blocks = [
+    `【主题目】\n${input.mainQuestion}`,
+    `【主题目回答】\n${input.mainAnswer.slice(0, 12_000)}`,
+  ];
+  if (input.followupQuestion) {
+    blocks.push(`【追问】\n${input.followupQuestion}`);
+    blocks.push(
+      `【追问回答】\n${(input.followupAnswer ?? "").slice(0, 8000)}`,
+    );
+  }
+  const user = `公司：${input.company}\n模式：${input.mode}\n题号（从 0 计）：${input.questionIndex}\n板块：${input.category}（kind=${input.kind}）\n\nJD（截断）：\n${input.jd.slice(0, 3500)}\n\n简历（截断）：\n${input.resume.slice(0, 3500)}\n\n${blocks.join("\n\n")}`;
+  return chatJson(
+    QUESTION_BLOCK_EVAL_SYSTEM,
+    user,
+  ) as Promise<Record<string, unknown>>;
+}
+
+export async function interviewChatReply(input: {
+  resume: string;
+  jd: string;
+  company: string;
+  mode: InterviewMode;
+  turns: InterviewTurn[];
+  questionEvaluations?: QuestionBlockEvaluation[];
+  /** 本页已连续多轮时的上文（不含当前这条） */
+  priorMessages?: { role: "user" | "assistant"; text: string }[];
+  userMessage: string;
+}) {
+  const transcript = input.turns
+    .map((t) => `${t.role === "interviewer" ? "面试官" : "候选人"}: ${t.text}`)
+    .join("\n");
+  const evalSummary =
+    input.questionEvaluations?.length ?
+      input.questionEvaluations
+        .map((block) => {
+          if (block.error) {
+            return `题${block.questionIndex} ${block.category}: [详评失败] ${block.error}`;
+          }
+          const excerpt = JSON.stringify(block.result).slice(0, 1800);
+          return `题${block.questionIndex} ${block.category}: ${excerpt}`;
+        })
+        .join("\n")
+    : "（暂无逐题详评）";
+  const prior =
+    input.priorMessages?.length ?
+      input.priorMessages
+        .slice(-12)
+        .map((m) => `${m.role === "user" ? "用户" : "助手"}: ${m.text}`)
+        .join("\n")
+    : "（暂无）";
+  const user =
+    `公司：${input.company}\n模式：${input.mode}\n\n【JD】\n${input.jd.slice(0, 4000)}\n\n【简历】\n${input.resume.slice(0, 4000)}\n\n【面试记录】\n${transcript.slice(0, 30000)}\n\n【逐题详评摘录】\n${evalSummary.slice(0, 12_000)}\n\n【本页已连续对话】\n${prior.slice(0, 8000)}\n\n【用户当前问题】\n${input.userMessage.slice(0, 8000)}`;
+  const raw = (await chatJson(INTERVIEW_CHAT_SYSTEM, user)) as {
+    reply?: string;
+  };
+  const reply = raw.reply?.trim();
+  if (!reply) throw new Error("模型未返回 reply");
+  return reply;
 }

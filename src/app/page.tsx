@@ -1,7 +1,13 @@
 "use client";
 
+import {
+  loadInterviewHistory,
+  removeInterviewHistoryEntry,
+  type InterviewHistoryEntry,
+} from "@/lib/history";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { InterviewMode, InterviewOutline } from "@/lib/types";
 
 const SESSION_KEY = "mm_session";
@@ -15,6 +21,11 @@ export default function SetupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<InterviewOutline | null>(null);
+  const [history, setHistory] = useState<InterviewHistoryEntry[]>([]);
+
+  useEffect(() => {
+    setHistory(loadInterviewHistory());
+  }, []);
 
   async function onGenerateOutline() {
     setError(null);
@@ -52,7 +63,75 @@ export default function SetupPage() {
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
           粘贴简历与 JD，生成大纲后开始语音模拟。口述内容仅保存为文字记录。
         </p>
+        <p className="mt-2 text-xs text-zinc-500">
+          <Link href="/ask-ai" className="underline">
+            仅问 AI（需先有面试记录或从历史打开）
+          </Link>
+        </p>
       </header>
+
+      <section className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+        <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+          面试历史
+        </h2>
+        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+          已完成的面试会保存在本浏览器（localStorage），可再次打开报告或向 AI 提问。
+        </p>
+        {history.length === 0 ? (
+          <p className="mt-3 text-sm text-zinc-400">
+            暂无归档。完成一场面试后会自动出现在这里。
+          </p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {history.map((h) => {
+              const when = new Date(h.savedAt).toLocaleString("zh-CN", {
+                dateStyle: "short",
+                timeStyle: "short",
+              });
+              const rounds = h.log.turns.length;
+              return (
+                <li
+                  key={h.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-100 bg-zinc-50/80 px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-950/40"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium text-zinc-800 dark:text-zinc-200">
+                      {h.log.company || "未填公司"}
+                    </p>
+                    <p className="text-xs text-zinc-500">
+                      {when} · 模式 {h.log.mode} · {rounds} 条轮次
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <Link
+                      href={`/report?id=${encodeURIComponent(h.id)}`}
+                      className="rounded-full border border-zinc-300 px-3 py-1 text-xs dark:border-zinc-600"
+                    >
+                      报告
+                    </Link>
+                    <Link
+                      href={`/ask-ai?id=${encodeURIComponent(h.id)}`}
+                      className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-medium text-white dark:bg-emerald-600"
+                    >
+                      问 AI
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        removeInterviewHistoryEntry(h.id);
+                        setHistory(loadInterviewHistory());
+                      }}
+                      className="rounded-full border border-red-200 px-3 py-1 text-xs text-red-700 dark:border-red-900/50 dark:text-red-400"
+                    >
+                      删除
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
 
       <section className="flex flex-col gap-4">
         <label className="flex flex-col gap-1 text-sm font-medium">
