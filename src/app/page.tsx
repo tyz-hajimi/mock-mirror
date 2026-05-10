@@ -5,6 +5,7 @@ import {
   removeInterviewHistoryEntry,
   type InterviewHistoryEntry,
 } from "@/lib/history";
+import { BUILTIN_DEMO_HISTORY_ID } from "@/lib/demo-interview-sample";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -22,6 +23,7 @@ export default function SetupPage() {
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<InterviewOutline | null>(null);
   const [history, setHistory] = useState<InterviewHistoryEntry[]>([]);
+  const [historyCollapsed, setHistoryCollapsed] = useState(false);
 
   useEffect(() => {
     setHistory(loadInterviewHistory());
@@ -57,83 +59,136 @@ export default function SetupPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-full max-w-2xl flex-col gap-8 px-4 py-10">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">面镜 MockMirror</h1>
-        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          粘贴简历与 JD，生成大纲后开始语音模拟。口述内容仅保存为文字记录。
-        </p>
-        <p className="mt-2 text-xs text-zinc-500">
-          <Link href="/ask-ai" className="underline">
-            仅问 AI（需先有面试记录或从历史打开）
-          </Link>
-        </p>
-      </header>
-
-      <section className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
-        <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
-          面试历史
-        </h2>
-        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-          已完成的面试会保存在本浏览器（localStorage），可再次打开报告或向 AI 提问。
-        </p>
-        {history.length === 0 ? (
-          <p className="mt-3 text-sm text-zinc-400">
-            暂无归档。完成一场面试后会自动出现在这里。
-          </p>
+    <div className="mx-auto flex min-h-full w-full max-w-6xl flex-1 flex-col-reverse gap-6 px-4 py-8 lg:flex-row lg:gap-0 lg:px-6">
+      <aside
+        className={`flex shrink-0 flex-col border-t border-zinc-200 pt-4 transition-[width] duration-200 dark:border-zinc-800 lg:sticky lg:top-8 lg:h-fit lg:max-h-[calc(100vh-4rem)] lg:overflow-hidden lg:border-r lg:border-t-0 lg:pt-0 ${
+          historyCollapsed ?
+            "w-full lg:w-10 lg:min-w-[2.5rem] lg:shrink-0 lg:pr-1"
+          : "w-full lg:w-[16.5rem] lg:min-w-[16.5rem] lg:overflow-y-auto lg:pr-4"
+        }`}
+      >
+        {historyCollapsed ? (
+          <div className="flex flex-row items-center justify-between gap-2 lg:flex-col lg:justify-start lg:gap-3 lg:py-1">
+            <button
+              type="button"
+              onClick={() => setHistoryCollapsed(false)}
+              className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-zinc-300 bg-zinc-50 py-2 text-xs font-medium text-zinc-700 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 lg:w-full lg:flex-col lg:gap-0.5 lg:py-2.5 lg:text-[10px]"
+              title="展开面试历史"
+            >
+              <span aria-hidden>▶</span>
+              <span className="lg:hidden">展开历史</span>
+              <span className="hidden text-[10px] lg:inline" aria-hidden>
+                历史
+              </span>
+            </button>
+            {history.length > 0 && (
+              <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-center text-[10px] font-medium text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200 lg:mx-auto">
+                {history.length}
+              </span>
+            )}
+          </div>
         ) : (
-          <ul className="mt-3 space-y-2">
-            {history.map((h) => {
-              const when = new Date(h.savedAt).toLocaleString("zh-CN", {
-                dateStyle: "short",
-                timeStyle: "short",
-              });
-              const rounds = h.log.turns.length;
-              return (
-                <li
-                  key={h.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-100 bg-zinc-50/80 px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-950/40"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-zinc-800 dark:text-zinc-200">
-                      {h.log.company || "未填公司"}
-                    </p>
-                    <p className="text-xs text-zinc-500">
-                      {when} · 模式 {h.log.mode} · {rounds} 条轮次
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 flex-wrap gap-2">
-                    <Link
-                      href={`/report?id=${encodeURIComponent(h.id)}`}
-                      className="rounded-full border border-zinc-300 px-3 py-1 text-xs dark:border-zinc-600"
-                    >
-                      报告
-                    </Link>
-                    <Link
-                      href={`/ask-ai?id=${encodeURIComponent(h.id)}`}
-                      className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-medium text-white dark:bg-emerald-600"
-                    >
-                      问 AI
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        removeInterviewHistoryEntry(h.id);
-                        setHistory(loadInterviewHistory());
-                      }}
-                      className="rounded-full border border-red-200 px-3 py-1 text-xs text-red-700 dark:border-red-900/50 dark:text-red-400"
-                    >
-                      删除
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          <>
+            <div className="flex items-start justify-between gap-2 border-b border-zinc-200 pb-2 dark:border-zinc-800">
+              <div className="min-w-0">
+                <h2 className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">
+                  面试历史
+                </h2>
+                <p className="text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">
+                  本机保存 · 可收起于左侧
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHistoryCollapsed(true)}
+                className="shrink-0 rounded-md border border-zinc-200 px-1.5 py-0.5 text-[10px] text-zinc-500 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                title="收起侧栏"
+                aria-label="收起面试历史侧栏"
+              >
+                ◀
+              </button>
+            </div>
+            <div className="mt-2 min-h-0 flex-1 lg:overflow-y-auto lg:pr-0.5">
+              {history.length === 0 ? (
+                <p className="text-[11px] leading-snug text-zinc-400">
+                  暂无。完成面试或查看内置示例后出现。
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {history.map((h) => {
+                    const when = new Date(h.savedAt).toLocaleString("zh-CN", {
+                      month: "numeric",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
+                    const rounds = h.log.turns.length;
+                    return (
+                      <li
+                        key={h.id}
+                        className="rounded-lg border border-zinc-200/90 bg-zinc-50/80 px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-950/40"
+                      >
+                        <p className="line-clamp-1 text-xs font-medium text-zinc-800 dark:text-zinc-200">
+                          {h.log.company || "未填公司"}
+                          {h.id === BUILTIN_DEMO_HISTORY_ID ? (
+                            <span className="ml-1 align-middle rounded bg-amber-100 px-1 py-px text-[10px] font-normal text-amber-900 dark:bg-amber-950/50 dark:text-amber-100">
+                              示例
+                            </span>
+                          ) : null}
+                        </p>
+                        <p className="mt-0.5 truncate text-[10px] text-zinc-500">
+                          {when} · {h.log.mode} · {rounds}轮
+                        </p>
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          <Link
+                            href={`/report?id=${encodeURIComponent(h.id)}`}
+                            className="rounded border border-zinc-300 px-2 py-0.5 text-[10px] font-medium dark:border-zinc-600"
+                          >
+                            报告
+                          </Link>
+                          <Link
+                            href={`/ask-ai?id=${encodeURIComponent(h.id)}`}
+                            className="rounded bg-emerald-700 px-2 py-0.5 text-[10px] font-medium text-white dark:bg-emerald-600"
+                          >
+                            AI
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              removeInterviewHistoryEntry(h.id);
+                              setHistory(loadInterviewHistory());
+                            }}
+                            className="rounded border border-red-200 px-2 py-0.5 text-[10px] text-red-600 dark:border-red-900/40 dark:text-red-400"
+                          >
+                            删
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </>
         )}
-      </section>
+      </aside>
 
-      <section className="flex flex-col gap-4">
+      <main className="flex min-w-0 flex-1 flex-col gap-8 lg:pl-6">
+        <header>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            面镜 MockMirror
+          </h1>
+          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+            粘贴简历与 JD，生成大纲后开始语音模拟。口述内容仅保存为文字记录。
+          </p>
+          <p className="mt-2 text-xs text-zinc-500">
+            <Link href="/ask-ai" className="underline">
+              仅问 AI（需先有面试记录或从历史打开）
+            </Link>
+          </p>
+        </header>
+
+        <section className="flex flex-col gap-4">
         <label className="flex flex-col gap-1 text-sm font-medium">
           目标公司
           <input
@@ -234,6 +289,7 @@ export default function SetupPage() {
           </ul>
         </section>
       )}
+      </main>
     </div>
   );
 }

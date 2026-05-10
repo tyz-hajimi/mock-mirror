@@ -5,7 +5,7 @@ import type {
   InterviewTurn,
   QuestionBlockEvaluation,
 } from "@/lib/types";
-import { getInterviewHistoryEntry } from "@/lib/history";
+import { getInterviewHistoryEntry, patchInterviewHistoryLog } from "@/lib/history";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
@@ -64,6 +64,10 @@ function ReportInner() {
 
   useEffect(() => {
     if (!log) return;
+    if (log.scoreReport != null) {
+      setReport(log.scoreReport);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -80,7 +84,22 @@ function ReportInner() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "评分失败");
-        if (!cancelled) setReport(data.report);
+        if (cancelled) return;
+        const r = data.report;
+        setReport(r);
+        setLog((prev) => {
+          if (!prev) return prev;
+          const next: InterviewLog = { ...prev, scoreReport: r };
+          try {
+            sessionStorage.setItem(LOG_KEY, JSON.stringify(next));
+          } catch {
+            /* ignore quota */
+          }
+          if (historyId) {
+            patchInterviewHistoryLog(historyId, { scoreReport: r });
+          }
+          return next;
+        });
       } catch (e) {
         if (!cancelled)
           setError(e instanceof Error ? e.message : "评分失败");
@@ -89,7 +108,7 @@ function ReportInner() {
     return () => {
       cancelled = true;
     };
-  }, [log]);
+  }, [log, historyId]);
 
   if (loading) {
     return (

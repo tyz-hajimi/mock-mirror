@@ -52,4 +52,12 @@ export type InterviewLog = {
   turns: InterviewTurn[];
   /** 逐题详评（在进入下一题时后台生成，可能因网络失败条目缺失） */
   questionEvaluations?: QuestionBlockEvaluation[];
+  /** 与报告页 AI 总评同源的结构化 JSON，在报告页加载总评后写入本地，问 AI 首条仅做排版不重复请求 */
+  scoreReport?: unknown;
+};
+
+export type InterviewHistoryEntry = {
+  id: string;
+  savedAt: string;
+  log: InterviewLog;
 };
